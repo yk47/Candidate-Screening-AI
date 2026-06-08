@@ -7,12 +7,12 @@ import random
 from typing import Dict, List, Optional
 
 try:
-    from langchain.chat_models import ChatOpenAI
+    from langchain_openai import ChatOpenAI
 except ImportError:
     ChatOpenAI = None
 
 try:
-    from langchain.chat_models import ChatGoogleGenerativeAI
+    from langchain_google_genai import ChatGoogleGenerativeAI
 except ImportError:
     ChatGoogleGenerativeAI = None
 
@@ -51,22 +51,35 @@ class LLMService:
                 return ChatGoogleGenerativeAI(
                     model=self.model,
                     temperature=self.temperature,
-                    google_api_key=self.google_api_key,
+                    api_key=self.google_api_key,
                 )
             except TypeError:
-                # Some LangChain wrappers accept different param names
-                return ChatGoogleGenerativeAI(model=self.model, temperature=self.temperature)
+                try:
+                    return ChatGoogleGenerativeAI(
+                        model=self.model,
+                        temperature=self.temperature,
+                        google_api_key=self.google_api_key,
+                    )
+                except TypeError:
+                    return ChatGoogleGenerativeAI(model=self.model, temperature=self.temperature)
 
         # Fallback to OpenAI if provided
         if self.openai_api_key and ChatOpenAI is not None:
             try:
                 return ChatOpenAI(
-                    model_name=self.model,
+                    model=self.model,
                     temperature=self.temperature,
-                    openai_api_key=self.openai_api_key,
+                    api_key=self.openai_api_key,
                 )
             except TypeError:
-                return ChatOpenAI(model=self.model, temperature=self.temperature)
+                try:
+                    return ChatOpenAI(
+                        model_name=self.model,
+                        temperature=self.temperature,
+                        openai_api_key=self.openai_api_key,
+                    )
+                except TypeError:
+                    return ChatOpenAI(model=self.model, temperature=self.temperature)
 
         return None
 
@@ -97,7 +110,19 @@ class LLMService:
        else:
            response = chain.invoke(inputs)
        
-       return response.content
+       content = response.content
+       
+       # Handle case where content is a list of blocks (e.g. Gemini returns list)
+       if isinstance(content, list):
+           text_parts = []
+           for block in content:
+               if isinstance(block, dict) and "text" in block:
+                   text_parts.append(block["text"])
+               elif isinstance(block, str):
+                   text_parts.append(block)
+           content = " ".join(text_parts)
+       
+       return content
 
     def _normalize_role_name(self, role: str) -> str:
         """Normalize role name for consistent matching."""

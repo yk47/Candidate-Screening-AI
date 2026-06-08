@@ -21,9 +21,7 @@ Domain Exposure: {domain_exposure}
 Return the topics as a JSON list: ["topic1", "topic2", "topic3", "topic4", "topic5"]
 """
 
-QUESTION_GENERATION_PROMPT = """You are an expert interviewer creating interview questions.
-
-Generate a highly relevant technical interview question based on the following context:
+QUESTION_GENERATION_PROMPT = """You are a senior engineer conducting a real technical interview. Generate a single interview question that feels authentic, not like a textbook prompt.
 
 **Topic:** {topic}
 **Role:** {role}
@@ -31,20 +29,50 @@ Generate a highly relevant technical interview question based on the following c
 **Candidate Skills:** {skills}
 **Candidate Experience:** {experience_years} years
 
-**Retrieved Knowledge Base Context:**
+**Knowledge Base Content (use this as source material):**
 {retrieved_context}
 
-**Instructions:**
-1. The question should be based on the retrieved context and specific to the role
-2. Consider the candidate's background when framing the question
-3. Avoid generic questions - make it specific and meaningful
-4. The question should test both conceptual and practical understanding
-5. Format as a clear, well-structured question
+**CRITICAL RULES:**
+1. The question must be directly based on the knowledge base content.
+2. Keep the question SHORT (maximum 25 words).
+3. Use only ONE idea per question.
+4. Do NOT create multi-part questions.
+5. Do NOT add background stories unless necessary.
+6. Avoid lengthy scenarios.
+7. Avoid phrases like:
+   "Explain the key concepts of..."
+   "Describe..."
+   "Discuss..."
+8. Prefer practical questions about:
+   trade-offs
+   failures
+   optimization
+   scalability
+   security
+   debugging
+   Generate a single sentence only.
+   Output only the question text.
+
+**Allowed formats:**
+"How would you optimize...?"
+"What could go wrong if...?"
+"Why would you choose...?"
+"How would you handle...?"
+"What trade-offs are involved when...?"
+"Suppose you need to..."
+"Given this architecture..."
+
+**Examples of good questions:**
+- "Your database queries are slowing down under load. How would you diagnose and optimize them, and what trade-offs would each approach involve?"
+- "Suppose you need to design a caching layer for a high-throughput API. What eviction strategy would you choose and why?"
+- "What could go wrong if you enable read replicas without considering replication lag?"
+- "Given the architecture described in the knowledge base, how would you migrate from a monolithic deployment to microservices?"
+- "A system currently uses JWTs for authentication. What security risks exist, and how would you mitigate them?"
 
 Return a JSON object with:
 {{
-    "question": "your question here",
-    "context_used": "brief explanation of which context was used",
+    "question": "your question here (must start with an allowed format)",
+    "context_used": "brief explanation of which knowledge base content was used",
     "expected_depth": "what depth of answer is expected"
 }}
 """

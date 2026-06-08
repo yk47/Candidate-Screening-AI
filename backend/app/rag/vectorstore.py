@@ -6,13 +6,19 @@ from typing import List, Dict, Optional
 from pathlib import Path
 
 try:
-   from langchain_community.vectorstores import Chroma
-   from langchain_openai import OpenAIEmbeddings
-   from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_community.vectorstores import Chroma
+except ImportError:
+    Chroma = None
+
+try:
+    from langchain_openai import OpenAIEmbeddings
 except ImportError:
     OpenAIEmbeddings = None
+
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
     HuggingFaceEmbeddings = None
-    Chroma = None
 
 
 # Global cache for embeddings to avoid reloading model multiple times
