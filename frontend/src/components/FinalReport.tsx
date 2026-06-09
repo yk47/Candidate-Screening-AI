@@ -8,12 +8,16 @@ interface FinalReportProps {
 export default function FinalReport({ report, candidateName }: FinalReportProps) {
   if (!report) return null;
 
-  const recommendationColor = {
-    "Strong Hire": "var(--success)",
-    "Hire": "var(--gold)",
-    "Borderline": "var(--warning)",
-    "No Hire": "var(--danger)"
-  }[report.hiring_recommendation] || "var(--gold)";
+  const recommendationColors: Record<string, string> = {
+  "Strong Hire": "var(--success)",
+  "Hire": "var(--gold)",
+  "Borderline": "var(--warning)",
+  "No Hire": "var(--danger)",
+};
+
+const recommendationColor =
+  recommendationColors[String(report.hiring_recommendation)] ??
+  "var(--gold)";
 
   return (
     <div style={{
