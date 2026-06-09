@@ -5,21 +5,6 @@ import json
 from typing import List, Dict, Optional
 from pathlib import Path
 
-try:
-    from langchain_community.vectorstores import Chroma
-except ImportError:
-    Chroma = None
-
-try:
-    from langchain_openai import OpenAIEmbeddings
-except ImportError:
-    OpenAIEmbeddings = None
-
-try:
-    from langchain_huggingface import HuggingFaceEmbeddings
-except ImportError:
-    HuggingFaceEmbeddings = None
-
 
 # Global cache for embeddings to avoid reloading model multiple times
 _embedding_cache = {}
@@ -53,21 +38,39 @@ class VectorStore:
             self._embeddings = _embedding_cache[cache_key]
             return self._embeddings
         
-        # Initialize embeddings
-        if self.embedding_type == "openai" and OpenAIEmbeddings is not None:
-            api_key = os.getenv("OPENAI_API_KEY")
-            if api_key:
-                self._embeddings = OpenAIEmbeddings(openai_api_key=api_key)
-            else:
-                self._embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        elif HuggingFaceEmbeddings is not None:
-            self._embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Initialize embeddings - lazy imports to reduce memory at startup
+        if self.embedding_type == "openai":
+            try:
+                from langchain_openai import OpenAIEmbeddings
+                api_key = os.getenv("OPENAI_API_KEY")
+                if api_key:
+                    self._embeddings = OpenAIEmbeddings(openai_api_key=api_key)
+                else:
+                    raise ValueError("OPENAI_API_KEY not set")
+            except Exception:
+                self._embeddings = self._fallback_embeddings()
         else:
-            raise RuntimeError("No embedding backend available. Install langchain and required embedding packages.")
+            self._embeddings = self._fallback_embeddings()
         
         # Cache it
         _embedding_cache[cache_key] = self._embeddings
         return self._embeddings
+    
+    def _fallback_embeddings(self):
+        """Create a lightweight fallback embedding using simple API-based approach."""
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            return HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        except ImportError:
+            # If HuggingFace is not available, try OpenAI as last fallback
+            try:
+                from langchain_openai import OpenAIEmbeddings
+                api_key = os.getenv("OPENAI_API_KEY")
+                if api_key:
+                    return OpenAIEmbeddings(openai_api_key=api_key)
+            except ImportError:
+                pass
+            raise RuntimeError("No embedding backend available. Install langchain and required embedding packages.")
     
     @property
     def store(self):
@@ -75,7 +78,10 @@ class VectorStore:
         if self._store is not None:
             return self._store
         
-        if Chroma is None:
+        # Lazy import to reduce memory at startup
+        try:
+            from langchain_community.vectorstores import Chroma
+        except ImportError:
             raise RuntimeError("Chroma vector store is not available. Install the chromadb and langchain packages.")
         
         # Initialize Chroma store only when accessed

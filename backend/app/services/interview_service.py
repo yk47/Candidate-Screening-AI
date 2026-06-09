@@ -5,7 +5,6 @@ import json
 from sqlalchemy.orm import Session
 
 from .llm_service import LLMService
-from ..rag.retriever import RAGRetriever
 from ..db.repository import SessionRepository, ResumeDataRepository, QuestionRepository, SessionEvaluationRepository
 
 
@@ -15,7 +14,16 @@ class InterviewService:
     def __init__(self):
         """Initialize interview service."""
         self.llm_service = LLMService()
-        self.rag_retriever = RAGRetriever()
+        # Lazy init RAG to avoid loading chromadb/sentence-transformers at startup
+        self._rag_retriever = None
+    
+    @property
+    def rag_retriever(self):
+        """Lazy-loaded RAG retriever."""
+        if self._rag_retriever is None:
+            from ..rag.retriever import RAGRetriever
+            self._rag_retriever = RAGRetriever()
+        return self._rag_retriever
     
     def parse_resume(self, resume_text: str) -> Dict:
         """Parse and extract information from resume.

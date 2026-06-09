@@ -1,35 +1,57 @@
 """Database connection and session management."""
 
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
+from sqlalchemy.orm import Session
 
-from .models import Base
 
-# Database URL from environment or default SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./candidate_screening.db")
+# Lazily initialized on first use
+_engine = None
+_SessionLocal = None
 
-# Create engine with appropriate settings
-if "sqlite" in DATABASE_URL:
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={"check_same_thread": False}
-    )
-else:
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def _get_engine():
+    """Create engine on first access to avoid heavy initialization at import time."""
+    global _engine
+    if _engine is not None:
+        return _engine
+    
+    from sqlalchemy import create_engine
+    
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./candidate_screening.db")
+    
+    if "sqlite" in DATABASE_URL:
+        _engine = create_engine(
+            DATABASE_URL,
+            connect_args={"check_same_thread": False}
+        )
+    else:
+        _engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    
+    return _engine
+
+
+def _get_session_factory():
+    """Get or create session factory lazily."""
+    global _SessionLocal
+    if _SessionLocal is not None:
+        return _SessionLocal
+    
+    from sqlalchemy.orm import sessionmaker
+    _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_get_engine())
+    
+    return _SessionLocal
 
 
 def init_db():
     """Initialize database tables."""
-    Base.metadata.create_all(bind=engine)
+    from .models import Base
+    Base.metadata.create_all(bind=_get_engine())
 
 
 def get_db() -> Generator[Session, None, None]:
     """Get database session dependency for FastAPI."""
+    SessionLocal = _get_session_factory()
     db = SessionLocal()
     try:
         yield db

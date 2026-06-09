@@ -5,8 +5,6 @@ import PyPDF2
 from typing import List, Dict
 from pathlib import Path
 
-from .vectorstore import VectorStore
-
 
 class DocumentProcessor:
     """Process and chunk documents for RAG."""
@@ -76,7 +74,15 @@ class KnowledgeBaseIngester:
     
     def __init__(self):
         self.processor = DocumentProcessor()
-        self.vector_stores: Dict[str, VectorStore] = {}
+        self._vector_store_cls = None  # Lazy loaded
+        self.vector_stores = {}
+    
+    def _get_vector_store_cls(self):
+        """Lazy import VectorStore class."""
+        if self._vector_store_cls is None:
+            from .vectorstore import VectorStore
+            self._vector_store_cls = VectorStore
+        return self._vector_store_cls
     
     def normalize_role(self, role: str) -> str:
         """Normalize role name for display."""
@@ -91,9 +97,10 @@ class KnowledgeBaseIngester:
         sanitized = sanitized.strip('_')
         return sanitized
     
-    def get_or_create_store(self, role: str) -> VectorStore:
+    def get_or_create_store(self, role: str):
         role_key = self.normalize_role(role)
         if role_key not in self.vector_stores:
+            VectorStore = self._get_vector_store_cls()
             sanitized_name = self.sanitize_collection_name(role)
             self.vector_stores[role_key] = VectorStore(
                 collection_name=f"knowledge_{sanitized_name}"
@@ -158,6 +165,7 @@ class KnowledgeBaseIngester:
             }
         
         # Check if any vectorstore already has documents (skip if already ingested)
+        from .vectorstore import VectorStore
         test_store = VectorStore(collection_name="knowledge_test")
         try:
             # Try to search for any documents - if this succeeds with non-empty results,

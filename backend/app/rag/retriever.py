@@ -1,8 +1,6 @@
 """Retrieval module for RAG pipeline."""
 
 from typing import List, Dict, Optional
-from .vectorstore import VectorStore
-from .ingest import KnowledgeBaseIngester
 
 
 class RAGRetriever:
@@ -10,6 +8,8 @@ class RAGRetriever:
     
     def __init__(self):
         """Initialize retriever."""
+        # Lazy import to avoid loading heavy dependencies (chromadb, sentence-transformers) at startup
+        from .ingest import KnowledgeBaseIngester
         self.ingester = KnowledgeBaseIngester()
     
     def retrieve_context(self, role: str, query: str, k: int = 5) -> Dict:

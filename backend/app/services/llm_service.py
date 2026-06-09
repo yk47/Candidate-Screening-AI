@@ -6,17 +6,6 @@ import re
 import random
 from typing import Dict, List, Optional
 
-try:
-    from langchain_openai import ChatOpenAI
-except ImportError:
-    ChatOpenAI = None
-
-try:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:
-    ChatGoogleGenerativeAI = None
-
-from langchain_core.prompts import PromptTemplate
 from .langsmith_config import LangSmithConfig, get_langsmith_callbacks
 
 
@@ -42,44 +31,67 @@ class LLMService:
         self.temperature = float(temperature)
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
-        self.llm = self._initialize_llm()
+        self._llm = None  # Lazy initialized on first use
+    
+    def _get_llm(self):
+        """Lazy get LLM — loads heavy deps only on first use."""
+        if self._llm is not None:
+            return self._llm
+        self._llm = self._initialize_llm()
+        return self._llm
     
     def _initialize_llm(self):
         # Prefer Google Gemini if available
-        if self.google_api_key and ChatGoogleGenerativeAI is not None:
+        if self.google_api_key:
             try:
-                return ChatGoogleGenerativeAI(
-                    model=self.model,
-                    temperature=self.temperature,
-                    api_key=self.google_api_key,
-                )
-            except TypeError:
                 try:
-                    return ChatGoogleGenerativeAI(
-                        model=self.model,
-                        temperature=self.temperature,
-                        google_api_key=self.google_api_key,
-                    )
-                except TypeError:
-                    return ChatGoogleGenerativeAI(model=self.model, temperature=self.temperature)
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                except ImportError:
+                    ChatGoogleGenerativeAI = None
+                if ChatGoogleGenerativeAI is not None:
+                    try:
+                        return ChatGoogleGenerativeAI(
+                            model=self.model,
+                            temperature=self.temperature,
+                            api_key=self.google_api_key,
+                        )
+                    except TypeError:
+                        try:
+                            return ChatGoogleGenerativeAI(
+                                model=self.model,
+                                temperature=self.temperature,
+                                google_api_key=self.google_api_key,
+                            )
+                        except TypeError:
+                            return ChatGoogleGenerativeAI(model=self.model, temperature=self.temperature)
+            except Exception:
+                pass
 
         # Fallback to OpenAI if provided
-        if self.openai_api_key and ChatOpenAI is not None:
+        if self.openai_api_key:
             try:
-                return ChatOpenAI(
-                    model=self.model,
-                    temperature=self.temperature,
-                    api_key=self.openai_api_key,
-                )
-            except TypeError:
                 try:
-                    return ChatOpenAI(
-                        model_name=self.model,
-                        temperature=self.temperature,
-                        openai_api_key=self.openai_api_key,
-                    )
-                except TypeError:
-                    return ChatOpenAI(model=self.model, temperature=self.temperature)
+                    from langchain_openai import ChatOpenAI
+                except ImportError:
+                    ChatOpenAI = None
+                if ChatOpenAI is not None:
+                    try:
+                        return ChatOpenAI(
+                            model=self.model,
+                            temperature=self.temperature,
+                            api_key=self.openai_api_key,
+                        )
+                    except TypeError:
+                        try:
+                            return ChatOpenAI(
+                                model_name=self.model,
+                                temperature=self.temperature,
+                                openai_api_key=self.openai_api_key,
+                            )
+                        except TypeError:
+                            return ChatOpenAI(model=self.model, temperature=self.temperature)
+            except Exception:
+                pass
 
         return None
 
@@ -96,11 +108,12 @@ class LLMService:
                 "error": "Could not parse JSON"
             }
 
-    def _run_chain(self, prompt_template: PromptTemplate, inputs: Dict) -> str:
-       if not self.llm:
+    def _run_chain(self, prompt_template, inputs: Dict) -> str:
+       llm = self._get_llm()
+       if not llm:
            raise RuntimeError("No LLM is configured. Set OPENAI_API_KEY or GOOGLE_API_KEY.")
 
-       chain = prompt_template | self.llm
+       chain = prompt_template | llm
        
        # Use LangSmith callbacks if enabled
        callbacks = get_langsmith_callbacks()
@@ -132,9 +145,10 @@ class LLMService:
     def generate_topics(self, skills: List[str], technologies: List[str],
                         experience_years: int, domain_exposure: List[str],
                         role: str) -> List[str]:
-        if not self.llm:
+        if not self._get_llm():
             return self._mock_topics(self._normalize_role_name(role))
 
+        from langchain_core.prompts import PromptTemplate
         from ..prompts.prompts import TOPIC_GENERATION_PROMPT
 
         prompt = PromptTemplate(
@@ -172,9 +186,10 @@ class LLMService:
     def generate_question(self, topic: str, role: str, difficulty: str,
                           skills: List[str], experience_years: int,
                           retrieved_context: str) -> Dict:
-        if not self.llm:
+        if not self._get_llm():
             return self._mock_question(topic, self._normalize_role_name(role), difficulty)
 
+        from langchain_core.prompts import PromptTemplate
         from ..prompts.prompts import QUESTION_GENERATION_PROMPT
 
         prompt = PromptTemplate(
@@ -204,9 +219,10 @@ class LLMService:
 
     def evaluate_answer(self, question: str, answer: str, topic: str,
                         role: str, reference_context: str) -> Dict:
-        if not self.llm:
+        if not self._get_llm():
             return self._mock_evaluation(answer, topic, reference_context)
 
+        from langchain_core.prompts import PromptTemplate
         from ..prompts.prompts import ANSWER_EVALUATION_PROMPT
 
         prompt = PromptTemplate(
