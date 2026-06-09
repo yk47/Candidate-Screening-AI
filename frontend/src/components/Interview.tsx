@@ -22,35 +22,12 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-/* ── Progress dots ── */
-function ProgressDots({ current, total }: { current: number; total: number }) {
-  return (
-    <div style={{ display: 'flex', gap: 5 }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <div key={i} style={{
-          width: 20, height: 4,
-          borderRadius: 4,
-          background:
-            i < current - 1 ? 'var(--gold)'
-            : i === current - 1 ? 'rgba(201,168,76,0.5)'
-            : 'var(--surface4)',
-          transition: 'background 0.4s ease',
-        }} />
-      ))}
-    </div>
-  );
-}
-
 /* ── Interview header ── */
 function InterviewHeader({
   candidateInfo,
-  questionNumber,
-  maxQuestions,
   stage,
 }: {
   candidateInfo: any;
-  questionNumber: number;
-  maxQuestions: number;
   stage: Stage;
 }) {
   const name = candidateInfo?.candidateName || 'Candidate';
@@ -86,34 +63,31 @@ function InterviewHeader({
         </div>
       </div>
 
-      {/* Progress */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        {isLive && <ProgressDots current={questionNumber} total={maxQuestions} />}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 14px',
-          background: 'var(--surface2)',
-          border: '1px solid var(--border)',
-          borderRadius: 40,
-          fontFamily: 'var(--font-mono)',
-          fontSize: 12,
-          color: 'var(--text-muted)',
-        }}>
-          {isLive && (
-            <div style={{
-              width: 6, height: 6,
-              borderRadius: '50%',
-              background: 'var(--gold)',
-              animation: 'pulse 2s infinite',
-            }} />
-          )}
-          {isLive
-            ? `Q ${questionNumber} / ${maxQuestions}`
-            : stage === 'greeting' || stage === 'waiting_ready'
-              ? 'Starting…'
-              : 'Wrapping up…'
-          }
-        </div>
+      {/* Status badge */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '7px 14px',
+        background: 'var(--surface2)',
+        border: '1px solid var(--border)',
+        borderRadius: 40,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 12,
+        color: 'var(--text-muted)',
+      }}>
+        {isLive && (
+          <div style={{
+            width: 6, height: 6,
+            borderRadius: '50%',
+            background: 'var(--gold)',
+            animation: 'pulse 2s infinite',
+          }} />
+        )}
+        {isLive
+          ? 'Interview in progress'
+          : stage === 'greeting' || stage === 'waiting_ready'
+            ? 'Starting…'
+            : 'Wrapping up…'
+        }
       </div>
     </div>
   );
@@ -146,9 +120,9 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
 
   /* ── Notify parent when interview completes ── */
   useEffect(() => {
-    if (stage === 'summary') {
-      onComplete(finalReport);
-    }
+    // Deliberately NOT calling onComplete here — it's called after
+    // the 5-second delay in loadSummary / completion paths so the
+    // candidate can read the "Thank you" message before being redirected.
   }, [stage, finalReport, onComplete]);
 
   const addMsg = (msg: Omit<Message, 'id'>) =>
@@ -166,7 +140,6 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
       addMsg({
         sender: 'ai',
         text:   q.question_text,
-        meta:   `Question ${q.question_number ?? (expectedNum || questionNumber + 1)} · ${q.topic} · ${q.difficulty}`,
       });
     } catch (err) {
       const msg = (err as Error).message;
@@ -183,12 +156,26 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
   /* ── Finish ── */
   const loadSummary = async () => {
     setStage('summary');
+    // Show the end-of-interview message
     addMsg({
       sender: 'ai',
-      text:   '🎉 Interview complete!\n\nThank you for your time. Your responses have been recorded and will be reviewed shortly.',
+      text:   'Thank you for your time. This interview has now ended.',
       meta:   'Session closed',
     });
-    // onComplete will be called by useEffect when stage changes to 'summary'
+    // Wait 5 seconds so the candidate can read the thank-you message,
+    // then fetch the evaluation report and navigate to results
+    setTimeout(async () => {
+      try {
+        const summary = await interviewService.getSessionSummary(sessionId);
+        if (summary) {
+          onComplete(summary);
+        } else {
+          onComplete();
+        }
+      } catch (e) {
+        onComplete();
+      }
+    }, 5000);
   };
 
   /* ── Handle user message ── */
@@ -231,7 +218,6 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
         addMsg({
           sender: 'ai',
           text:   `Thank you for your answer. Processing...`,
-          meta:   'Acknowledgment',
         });
 
         // Check if interview was terminated early
@@ -241,9 +227,14 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
             setStage('summary');
             addMsg({
               sender: 'ai',
-              text:   '📋 Interview completed.\n\nHere is your detailed evaluation report:',
-              meta:   'Final Report',
+              text:   'Thank you for your time. This interview has now ended.',
+              meta:   'Session closed',
             });
+            // Wait 5 seconds so the candidate can read the thank-you message,
+            // then navigate to results
+            setTimeout(() => {
+              onComplete(evaluation.final_report);
+            }, 5000);
           }, 1000);
         } else {
           setTimeout(() => {
@@ -253,17 +244,22 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
       } catch (err) {
         const msg = (err as Error).message;
         if (msg.includes('completed')) {
-          // Fetch final report when interview completes naturally
-          try {
-            const summary = await interviewService.getSessionSummary?.(sessionId);
-            if (summary) {
-              setFinalReport(summary);
-            }
-          } catch (e) {
-            // Fallback if summary endpoint doesn't exist
-          }
           setStage('summary');
-          addMsg({ sender: 'ai', text: '📋 Interview completed.\n\nHere is your detailed evaluation report:', meta: 'Complete' });
+          addMsg({
+            sender: 'ai',
+            text:   'Thank you for your time. This interview has now ended.',
+            meta:   'Session closed',
+          });
+          // Wait 5 seconds so the candidate can read the thank-you message,
+          // then fetch the evaluation report and navigate to results
+          setTimeout(async () => {
+            try {
+              const summary = await interviewService.getSessionSummary?.(sessionId);
+              onComplete(summary);
+            } catch (e) {
+              onComplete();
+            }
+          }, 5000);
         } else {
           setError('Error submitting answer: ' + msg);
         }
@@ -279,52 +275,33 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
     <div style={{ maxWidth: 820, margin: '0 auto', padding: '0 24px 40px', animation: 'fadeUp 0.4s ease both' }}>
       <InterviewHeader
         candidateInfo={candidateInfo}
-        questionNumber={questionNumber}
-        maxQuestions={Math.max(7, questionNumber + 2)}
         stage={stage}
       />
 
       <ErrorBar message={error} />
 
-      {/* Display chat during interview, report after completion */}
-      {stage !== 'summary' || !finalReport ? (
-        <>
-          <ChatWindow
-            messages={messages}
-            candidateInitials={initials(candidateInfo?.candidateName || 'C')}
-          />
+      {/* Always show chat window (includes greeting + "Thank you" message) */}
+      <ChatWindow
+        messages={messages}
+        candidateInitials={initials(candidateInfo?.candidateName || 'C')}
+      />
 
-          {inputActive && (
-            <ChatInput
-              onSend={handleSend}
-              loading={loading}
-              placeholder={
-                stage === 'waiting_ready'
-                  ? 'Type "Ready" to begin your interview…'
-                  : 'Share your answer here…'
-              }
-            />
-          )}
+      {inputActive && (
+        <ChatInput
+          onSend={handleSend}
+          loading={loading}
+          placeholder={
+            stage === 'waiting_ready'
+              ? 'Type "Ready" to begin your interview…'
+              : 'Share your answer here…'
+          }
+        />
+      )}
 
-          {stage === 'asking_questions' && answers.length > 0 && (
-            <div style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {answers.map((a, i) => (
-                <div key={i} style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  padding: '4px 12px',
-                  borderRadius: 40,
-                  background: 'var(--surface2)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--gold)',
-                }}>
-                  Q{a.questionNumber}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
+      {/* Answer counter badges removed per requirement */}
+
+      {/* After interview completes, show the evaluation report */}
+      {stage === 'summary' && finalReport && (
         <FinalReport
           report={finalReport}
           candidateName={candidateInfo?.candidateName || 'Candidate'}
