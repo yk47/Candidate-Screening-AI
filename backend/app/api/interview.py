@@ -12,7 +12,15 @@ from ..services.interview_service import InterviewService
 from ..graph.state import InterviewState
 
 router = APIRouter(prefix="/api/interview", tags=["interview"])
-interview_service = InterviewService()
+
+# Lazy singleton for InterviewService to avoid heavy imports at module level
+_interview_service = None
+
+def get_interview_service():
+    global _interview_service
+    if _interview_service is None:
+        _interview_service = InterviewService()
+    return _interview_service
 
 # Pydantic models for request/response
 from pydantic import BaseModel
@@ -111,7 +119,7 @@ async def start_interview(request: Request, db: Session = Depends(get_db)):
         )
         
         # Parse resume and store extracted data
-        extracted = interview_service.parse_resume(resume_text)
+        extracted = get_interview_service().parse_resume(resume_text)
         ResumeDataRepository.create(
             db=db,
             session_id=session.id,
@@ -170,7 +178,7 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
         
         if not existing_questions:
             # First question - generate topics and shuffle them for randomization
-            topics = interview_service.generate_topics(extracted_data, session.role)
+            topics = get_interview_service().generate_topics(extracted_data, session.role)
             random.shuffle(topics)
             session.topics = topics
             db.commit()
@@ -192,7 +200,7 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
         # Get topic for this question (cycle through topics if needed)
         topic = topics[min(question_number - 1, len(topics) - 1)] if topics else "General Knowledge"
         
-        question_data = interview_service.generate_question(
+        question_data = get_interview_service().generate_question(
             db=db,
             session_id=session_id,
             topic=topic,
@@ -237,7 +245,7 @@ async def submit_answer(request: AnswerSubmissionRequest, db: Session = Depends(
             raise HTTPException(status_code=404, detail="Session not found")
         
         # Evaluate answer with adaptive tracking
-        evaluation = interview_service.evaluate_answer(
+        evaluation = get_interview_service().evaluate_answer(
             db=db,
             session_id=request.session_id,
             question_id=request.question_id,
@@ -261,7 +269,7 @@ async def submit_answer(request: AnswerSubmissionRequest, db: Session = Depends(
             response["interview_terminated"] = True
             response["termination_reason"] = evaluation.get("termination_reason")
             # Generate final report
-            report = interview_service.generate_session_summary(db, request.session_id)
+            report = get_interview_service().generate_session_summary(db, request.session_id)
             response["final_report"] = report
         
         return response
@@ -312,7 +320,7 @@ async def get_session_summary(session_id: str, db: Session = Depends(get_db)):
         Interview summary
     """
     try:
-        summary = interview_service.generate_session_summary(db, session_id)
+        summary = get_interview_service().generate_session_summary(db, session_id)
         return summary
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
