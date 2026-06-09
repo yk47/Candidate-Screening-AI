@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     knowledge_path = os.getenv("KNOWLEDGE_BASE_PATH", "./data/knowledge_base")
     if Path(knowledge_path).exists():
         print("Knowledge base found. Deferring ingestion to background...")
-        asyncio.create_task(ingest_knowledge_base_async())
+        #asyncio.create_task(ingest_knowledge_base_async())
     else:
         print("No knowledge base directory found. Skipping ingestion.")
     
