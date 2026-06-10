@@ -189,7 +189,10 @@ async def start_interview(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/next-question", response_model=QuestionResponse)
-async def get_next_question(session_id: str, db: Session = Depends(get_db)):
+async def get_next_question(
+    session_id: str = Query(...),
+    db: Session = Depends(get_db)
+):
     """Get the next interview question."""
     try:
         print("========== NEXT QUESTION ==========")
@@ -233,15 +236,23 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
 
         print(f"Existing questions count: {len(existing_questions)}")
 
+        # ---------------- TOPIC GENERATION ----------------
         if not existing_questions:
             print("Generating topics...")
 
-            topics = get_interview_service().generate_topics(
-                extracted_data,
-                session.role
-            )
+            try:
+                topics = get_interview_service().generate_topics(
+                    extracted_data,
+                    session.role
+                )
+            except Exception as e:
+                print("TOPIC GENERATION FAILED:", str(e))
+                topics = ["General Knowledge"]
 
             print(f"Topics generated: {topics}")
+
+            if not topics:
+                topics = ["General Knowledge"]
 
             random.shuffle(topics)
 
@@ -250,11 +261,11 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
 
             print("Topics saved")
         else:
-            topics = session.topics or []
+            topics = session.topics or ["General Knowledge"]
             print(f"Using existing topics: {topics}")
 
+        # ---------------- QUESTION NUMBER ----------------
         question_number = len(existing_questions) + 1
-
         print(f"Question number: {question_number}")
 
         max_questions = 10
@@ -262,25 +273,35 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
         if question_number > max_questions:
             raise HTTPException(status_code=400, detail="completed")
 
-        topic = (
-            topics[min(question_number - 1, len(topics) - 1)]
-            if topics
-            else "General Knowledge"
-        )
+        # ---------------- SAFE TOPIC PICK ----------------
+        topic = topics[(question_number - 1) % len(topics)] if topics else "General Knowledge"
 
         print(f"Selected topic: {topic}")
         print(f"Role: {session.role}")
 
+        # ---------------- GENERATE QUESTION (SAFE WRAP) ----------------
         print("About to call generate_question()...")
 
-        question_data = get_interview_service().generate_question(
-            db=db,
-            session_id=session_id,
-            topic=topic,
-            role=session.role,
-            extracted_data=extracted_data,
-            question_number=question_number
-        )
+        try:
+            question_data = get_interview_service().generate_question(
+                db=db,
+                session_id=session_id,
+                topic=topic,
+                role=session.role,
+                extracted_data=extracted_data,
+                question_number=question_number
+            )
+
+        except Exception as e:
+            print("========== GENERATE QUESTION ERROR ==========")
+            print(str(e))
+            import traceback
+            traceback.print_exc()
+
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate question"
+            )
 
         print("Question generated successfully")
         print(question_data)
@@ -297,15 +318,14 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
         raise
 
     except Exception as e:
+        print("========== NEXT QUESTION GLOBAL ERROR ==========")
+        print(str(e))
         import traceback
-
-        print("========== NEXT QUESTION ERROR ==========")
-        print(f"Error: {str(e)}")
         traceback.print_exc()
 
         raise HTTPException(
-            status_code=400,
-            detail=str(e)
+            status_code=500,
+            detail="Internal server error"
         )
 
 
