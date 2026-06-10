@@ -2,10 +2,10 @@
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  process.env.REACT_APP_API_URL ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : 'http://127.0.0.1:8000');
+  (typeof window !== "undefined" &&
+   window.location.hostname === "localhost"
+    ? "http://localhost:8000"
+    : "https://candidate-screening-ai-1.onrender.com");
 
 console.debug('Interview service API_BASE_URL:', API_BASE_URL);
 
