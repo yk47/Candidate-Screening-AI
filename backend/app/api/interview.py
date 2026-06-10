@@ -4,6 +4,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request
 from fastapi import Form
 from sqlalchemy.orm import Session
 from typing import Optional
+import traceback
 import uuid
 
 from ..db.database import get_db
@@ -62,54 +63,83 @@ async def start_interview(request: Request, db: Session = Depends(get_db)):
         Session information
     """
     try:
-        # Support both JSON (application/json) and multipart/form-data (file upload).
+        print("========== START INTERVIEW ==========")
+
+        # Support both JSON and multipart/form-data
         content_type = request.headers.get("content-type", "")
         resume_text = ""
         candidate_name = None
         email = None
         role = None
+        resume_file = None
+
+        print(f"Content-Type: {content_type}")
 
         if "application/json" in content_type:
             payload = await request.json()
+
             candidate_name = payload.get("candidate_name")
             email = payload.get("email")
             role = payload.get("role")
             resume_text = payload.get("resume_text", "")
-            resume_file = None
+
+            print("Received JSON payload")
+
         else:
             form = await request.form()
+
             candidate_name = form.get("candidate_name")
             email = form.get("email")
             role = form.get("role")
             resume_text = form.get("resume_text") or ""
-            resume_file = form.get("resume_file")  # may be UploadFile
+            resume_file = form.get("resume_file")
+
+            print("Received multipart form-data")
+            print(f"candidate_name={candidate_name}")
+            print(f"email={email}")
+            print(f"role={role}")
+            print(f"resume_file_present={resume_file is not None}")
 
         if not candidate_name or not role:
-            raise HTTPException(status_code=400, detail="Missing required fields")
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields"
+            )
 
-        # If a file was uploaded, try to extract text from it
+        # Extract resume text if file uploaded
         if resume_file:
             try:
+                print("Processing uploaded resume...")
+
                 contents = await resume_file.read()
-                if getattr(resume_file, 'content_type', '') == 'text/plain':
-                    extracted_text = contents.decode(errors='ignore')
-                elif getattr(resume_file, 'content_type', '') == 'application/pdf':
-                    # Extract PDF text using PyPDF2
+
+                if getattr(resume_file, "content_type", "") == "text/plain":
+                    extracted_text = contents.decode(errors="ignore")
+
+                elif getattr(resume_file, "content_type", "") == "application/pdf":
                     import io
                     from PyPDF2 import PdfReader
+
                     reader = PdfReader(io.BytesIO(contents))
                     pages = [p.extract_text() or "" for p in reader.pages]
                     extracted_text = "\n".join(pages)
+
                 else:
                     extracted_text = ""
 
                 if extracted_text.strip():
                     resume_text = extracted_text
-            except Exception:
-                # If extraction fails, continue with any provided resume_text (may be empty)
-                pass
 
-        # Create session in database
+                print(f"Extracted resume text length: {len(resume_text)}")
+
+            except Exception as pdf_error:
+                print("PDF extraction failed:")
+                print(str(pdf_error))
+                import traceback
+                traceback.print_exc()
+
+        print("Creating session...")
+
         session = SessionRepository.create(
             db=db,
             candidate_name=candidate_name,
@@ -117,9 +147,16 @@ async def start_interview(request: Request, db: Session = Depends(get_db)):
             role=role,
             resume_text=resume_text
         )
-        
-        # Parse resume and store extracted data
+
+        print(f"Session created: {session.id}")
+
+        print("Parsing resume...")
+
         extracted = get_interview_service().parse_resume(resume_text)
+
+        print("Resume parsed successfully")
+        print(f"Extracted data: {extracted}")
+
         ResumeDataRepository.create(
             db=db,
             session_id=session.id,
@@ -128,15 +165,27 @@ async def start_interview(request: Request, db: Session = Depends(get_db)):
             experience_years=extracted.get("experience_years", 0),
             domain_exposure=extracted.get("domain_exposure", [])
         )
-        
+
+        print("Resume data stored successfully")
+
         return SessionResponse(
             session_id=session.id,
             candidate_name=session.candidate_name,
             role=session.role,
             status=session.status
         )
+
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print("========== START INTERVIEW ERROR ==========")
+        print(f"Error: {str(e)}")
+
+        import traceback
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
 @router.post("/next-question", response_model=QuestionResponse)
