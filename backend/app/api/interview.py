@@ -190,29 +190,29 @@ async def start_interview(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/next-question", response_model=QuestionResponse)
 async def get_next_question(session_id: str, db: Session = Depends(get_db)):
-    """Get the next interview question.
-    
-    Args:
-        session_id: Interview session ID
-        db: Database session
-        
-    Returns:
-        Question details
-    """
+    """Get the next interview question."""
     try:
+        print("========== NEXT QUESTION ==========")
+        print(f"Session ID: {session_id}")
+
         import random
+
         session = SessionRepository.get_by_id(db, session_id)
+        print("Session loaded")
+
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
-        
+
         # Check if interview was terminated early
         if session.interview_terminated_early:
             raise HTTPException(status_code=400, detail="completed")
-        
+
         resume_data = ResumeDataRepository.get_by_session(db, session_id)
+        print("Resume data loaded")
+
         if not resume_data:
             raise HTTPException(status_code=400, detail="Resume data not found")
-        
+
         extracted_data = {
             "skills": resume_data.skills or [],
             "technologies": resume_data.technologies or [],
@@ -220,35 +220,59 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
             "domain_exposure": resume_data.domain_exposure or [],
             "resume_text": session.resume_text
         }
-        
-        # For now, generate topics on first question
+
+        print("Extracted data prepared")
+
         from ..db.models import Question as QuestionModel
-        existing_questions = db.query(QuestionModel).filter(QuestionModel.session_id == session_id).all()
-        
+
+        existing_questions = (
+            db.query(QuestionModel)
+            .filter(QuestionModel.session_id == session_id)
+            .all()
+        )
+
+        print(f"Existing questions count: {len(existing_questions)}")
+
         if not existing_questions:
-            # First question - generate topics and shuffle them for randomization
-            topics = get_interview_service().generate_topics(extracted_data, session.role)
+            print("Generating topics...")
+
+            topics = get_interview_service().generate_topics(
+                extracted_data,
+                session.role
+            )
+
+            print(f"Topics generated: {topics}")
+
             random.shuffle(topics)
+
             session.topics = topics
             db.commit()
+
+            print("Topics saved")
         else:
             topics = session.topics or []
-        
+            print(f"Using existing topics: {topics}")
+
         question_number = len(existing_questions) + 1
-        
-        # Adaptive question count: Ask between 5-10 questions based on confidence
-        # Minimum questions = 5, Maximum = 10
+
+        print(f"Question number: {question_number}")
+
         max_questions = 10
-        min_questions = 5
-        
-        # If confidence is low, stop early (this is checked in evaluate_answer)
-        # If we have enough questions and confidence is high, can stop at 6-7
+
         if question_number > max_questions:
             raise HTTPException(status_code=400, detail="completed")
-        
-        # Get topic for this question (cycle through topics if needed)
-        topic = topics[min(question_number - 1, len(topics) - 1)] if topics else "General Knowledge"
-        
+
+        topic = (
+            topics[min(question_number - 1, len(topics) - 1)]
+            if topics
+            else "General Knowledge"
+        )
+
+        print(f"Selected topic: {topic}")
+        print(f"Role: {session.role}")
+
+        print("About to call generate_question()...")
+
         question_data = get_interview_service().generate_question(
             db=db,
             session_id=session_id,
@@ -257,7 +281,10 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
             extracted_data=extracted_data,
             question_number=question_number
         )
-        
+
+        print("Question generated successfully")
+        print(question_data)
+
         return QuestionResponse(
             question_id=question_data["id"],
             question_number=question_data["question_number"],
@@ -265,10 +292,21 @@ async def get_next_question(session_id: str, db: Session = Depends(get_db)):
             topic=question_data["topic"],
             difficulty=question_data["difficulty"]
         )
+
     except HTTPException:
         raise
+
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        import traceback
+
+        print("========== NEXT QUESTION ERROR ==========")
+        print(f"Error: {str(e)}")
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
 @router.post("/submit-answer")
