@@ -6,11 +6,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 
+from .db.database import init_db
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Minimal lifespan — no heavy initialization at startup."""
     print("Starting Candidate Screening AI Backend...")
+
+    # Create database tables
+    init_db()
+
+    print("Database initialized successfully")
+
     yield
+
     print("Shutting down Candidate Screening AI Backend...")
 
 
