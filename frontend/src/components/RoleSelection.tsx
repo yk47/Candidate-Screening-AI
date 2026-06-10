@@ -35,25 +35,61 @@ export default function RoleSelection({ candidateInfo, onStart, onBack }: RoleSe
   const [error, setError] = useState('');
   const [hovered, setHovered] = useState('');
 
-  const handleStart = async () => {
-    if (!selectedRole) { setError('Please select a role to continue.'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      const response = await interviewService.startInterview({
-        candidate_name: candidateInfo.candidateName,
-        email:          candidateInfo.email,
-        role:           selectedRole,
-        resume_text:    candidateInfo.resumeText || '',
-        resume_file:    candidateInfo.resumeFile || null,
-      });
-      onStart({ ...candidateInfo, role: selectedRole }, response.session_id);
-    } catch (err) {
-      setError('Error starting interview: ' + (err as Error).message);
-    } finally {
-      setLoading(false);
+ const handleStart = async () => {
+  if (!selectedRole) {
+    setError('Please select a role to continue.');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    console.log('Starting interview...');
+
+    const response = await interviewService.startInterview({
+      candidate_name: candidateInfo.candidateName,
+      email: candidateInfo.email,
+      role: selectedRole,
+      resume_text: candidateInfo.resumeText || '',
+      resume_file: candidateInfo.resumeFile || null,
+    });
+
+    console.log('START INTERVIEW RESPONSE:', response);
+
+    if (!response) {
+      throw new Error('Backend returned empty response');
     }
-  };
+
+    if (!response.session_id) {
+      throw new Error(
+        'Backend response missing session_id: ' +
+        JSON.stringify(response)
+      );
+    }
+
+    console.log('Session ID:', response.session_id);
+    console.log('Calling onStart...');
+
+    onStart(
+      { ...candidateInfo, role: selectedRole },
+      response.session_id
+    );
+
+    console.log('onStart completed');
+  } catch (err) {
+    console.error('FULL START ERROR:', err);
+
+    if (err instanceof Error) {
+      console.error(err.stack);
+      setError('Error starting interview: ' + err.message);
+    } else {
+      setError('Unknown error occurred');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div style={{ maxWidth: 820, margin: '0 auto', padding: '0 24px 40px', animation: 'fadeUp 0.4s ease both' }}>
