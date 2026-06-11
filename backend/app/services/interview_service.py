@@ -141,16 +141,20 @@ class InterviewService:
         else:
             difficulty = "advanced"
         
-        # Enhance query with resume data
-        enhanced_query = self.rag_retriever.enhance_query(
-            extracted_data.get("resume_text", ""),
-            topic,
-            role
-        )
-        
-        # Retrieve relevant context
-        retrieval = self.rag_retriever.retrieve_context(role, enhanced_query, k=5)
-        retrieved_context = retrieval.get("context", "")
+        # Enhance query with resume data (resilient — falls through on error)
+        retrieval = {"results": [], "context": ""}
+        try:
+            enhanced_query = self.rag_retriever.enhance_query(
+                extracted_data.get("resume_text", ""),
+                topic,
+                role
+            )
+            # Retrieve relevant context
+            retrieval = self.rag_retriever.retrieve_context(role, enhanced_query, k=5)
+            retrieved_context = retrieval.get("context", "")
+        except Exception as e:
+            print(f"RAG retrieval failed (non-fatal): {e}")
+            retrieved_context = ""
         
         # Generate question
         question_data = self.llm_service.generate_question(
