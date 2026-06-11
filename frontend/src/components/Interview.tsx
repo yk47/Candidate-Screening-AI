@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { interviewService } from '@/services/interviewService';
 import ChatWindow, { Message } from './ChatWindow';
 import ChatInput from './ChatInput';
-import FinalReport from './FinalReport';
 import { ErrorBar } from './UI';
 
 interface InterviewProps {
@@ -298,15 +297,6 @@ export default function Interview({ sessionId, candidateInfo, onComplete }: Inte
         />
       )}
 
-      {/* Answer counter badges removed per requirement */}
-
-      {/* After interview completes, show the evaluation report */}
-      {stage === 'summary' && finalReport && (
-        <FinalReport
-          report={finalReport}
-          candidateName={candidateInfo?.candidateName || 'Candidate'}
-        />
-      )}
     </div>
   );
 }
