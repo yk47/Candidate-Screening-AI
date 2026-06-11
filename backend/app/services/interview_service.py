@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Optional
 import json
+import os
 from sqlalchemy.orm import Session
 
 from .llm_service import LLMService
@@ -16,13 +17,22 @@ class InterviewService:
         self.llm_service = LLMService()
         # Lazy init RAG to avoid loading chromadb/sentence-transformers at startup
         self._rag_retriever = None
+        # Feature flag: skip RAG entirely if disabled (e.g. on Render where ChromaDB may not work)
+        self._rag_disabled = os.getenv("DISABLE_RAG", "").lower() in ("1", "true", "yes")
     
     @property
     def rag_retriever(self):
         """Lazy-loaded RAG retriever."""
+        if self._rag_disabled:
+            return None
         if self._rag_retriever is None:
-            from ..rag.retriever import RAGRetriever
-            self._rag_retriever = RAGRetriever()
+            try:
+                from ..rag.retriever import RAGRetriever
+                self._rag_retriever = RAGRetriever()
+            except Exception as e:
+                print(f"RAG retriever initialization failed (disabling RAG): {e}")
+                self._rag_disabled = True
+                self._rag_retriever = None
         return self._rag_retriever
     
     def parse_resume(self, resume_text: str) -> Dict:
@@ -143,17 +153,21 @@ class InterviewService:
         
         # Enhance query with resume data (resilient — falls through on error)
         retrieval = {"results": [], "context": ""}
-        try:
-            enhanced_query = self.rag_retriever.enhance_query(
-                extracted_data.get("resume_text", ""),
-                topic,
-                role
-            )
-            # Retrieve relevant context
-            retrieval = self.rag_retriever.retrieve_context(role, enhanced_query, k=5)
-            retrieved_context = retrieval.get("context", "")
-        except Exception as e:
-            print(f"RAG retrieval failed (non-fatal): {e}")
+        retriever = self.rag_retriever
+        if retriever is not None:
+            try:
+                enhanced_query = retriever.enhance_query(
+                    extracted_data.get("resume_text", ""),
+                    topic,
+                    role
+                )
+                # Retrieve relevant context
+                retrieval = retriever.retrieve_context(role, enhanced_query, k=5)
+                retrieved_context = retrieval.get("context", "")
+            except Exception as e:
+                print(f"RAG retrieval failed (non-fatal): {e}")
+                retrieved_context = ""
+        else:
             retrieved_context = ""
         
         # Generate question
