@@ -139,14 +139,15 @@ function TagGroup({
 }
 
 function gradeFromScore(avg: number): string {
-  if (avg >= 9.5) return 'A+';
-  if (avg >= 9.0) return 'A';
-  if (avg >= 8.5) return 'A−';
-  if (avg >= 8.0) return 'B+';
-  if (avg >= 7.5) return 'B';
-  if (avg >= 7.0) return 'B−';
-  if (avg >= 6.0) return 'C+';
-  return 'C';
+  if (avg >= 9.5) return 'O+';
+  if (avg >= 9.0) return 'O';
+  if (avg >= 8.5) return 'A+';
+  if (avg >= 8.0) return 'A';
+  if (avg >= 7.0) return 'B+';
+  if (avg >= 6.0) return 'B';
+  if (avg >= 5.0) return 'C+';
+  if (avg >= 4.0) return 'C';
+  return 'D';
 }
 
 function getScoreColor(score: number): string {
