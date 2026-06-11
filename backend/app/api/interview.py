@@ -1,6 +1,6 @@
 """FastAPI endpoints for interview workflow."""
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Request, Query
 from fastapi import Form
 from sqlalchemy.orm import Session
 from typing import Optional
