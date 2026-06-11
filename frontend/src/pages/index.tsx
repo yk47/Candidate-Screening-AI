@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import ResumeUpload from '@/components/ResumeUpload';
 import RoleSelection from '@/components/RoleSelection';
 import Interview from '@/components/Interview';
-import InterviewSummary from '@/components/InterviewSummary';
+import FinalReport from '@/components/FinalReport';
 
 type Stage = 'upload' | 'role' | 'interview' | 'summary';
 
@@ -191,9 +191,9 @@ export default function Home() {
         )}
 
         {stage === 'summary' && (
-          <InterviewSummary
-            summary={summary}
-            candidateInfo={candidateInfo}
+          <FinalReport
+            report={summary}
+            candidateName={candidateInfo?.candidateName || 'Candidate'}
             onComplete={() => {
               setSessionId(null);
               setCandidateInfo(null);
